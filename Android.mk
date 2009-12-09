@@ -181,6 +181,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
     libemoji \
 	libutils \
+	libdl \
 	libz
 
 LOCAL_STATIC_LIBRARIES := \
