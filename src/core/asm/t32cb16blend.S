@@ -19,11 +19,11 @@
 /*
  * This file is derived from libpixelflinger version of BLIT routine.
  * Algorithm used for BLIT operation here is equivalent to the one in
- * C function, S32A_D565_Opaque. This asm routine combines two 16-bit writes
- * into one 32-bit write to destination, uses destination and source pre-loads,
- * and unrolls the main loop thrice. These changes contribute to an additional
- * 2 FPS improvement (measured from launcher open/close usecase) over the
- * s32a_d565_opaque_arm ASM routine.
+ * C function, S32A_D565_Opaque. Use neon instructions to process 16 pixels
+ * at-a-time on armv7. If the number of pixels is less than 16 and/or the
+ * architecture is armv6 and below, use regular arm instructions. Regular
+ * arm code combines two 16-bit writes into one 32-bit write to destination,
+ * uses destination and source pre-loads, and unrolls the main loop thrice.
  */
 	.text
 	.align
@@ -43,8 +43,8 @@
     // red
     mov     lr, \DREG, lsr #(\OFFSET + 6 + 5)
     smlabb  lr, r7, lr, r8
-    add     lr, lr, lr, lsr #5
     and     r6, \SRC, r10
+    add     lr, lr, lr, lsr #5
     add     lr, r6, lr, lsr #5
     lsr     lr, #3
     orr     \FB, lr, lsl #(\OFFSET + 11)
@@ -53,8 +53,8 @@
         and     r6, \DREG, #(0x3F<<(\OFFSET + 5))
         lsr     r6, #5
         smlabt  r6, r7, r6, r9
-        add     r6, r6, r6, lsr #6
         and     lr, r10, \SRC, lsr #(8)
+        add     r6, r6, r6, lsr #6
         add     r6, lr, r6, lsr #6
         lsr     r6, #2
         orr     \FB, \FB, r6, lsl #(\OFFSET + 5)
@@ -62,8 +62,8 @@
             // blue
             and     lr, \DREG, #(0x1F << \OFFSET)
             smlabt  lr, r7, lr, r8
-            add     lr, lr, lr, lsr #5
             and     r6, r10, \SRC, lsr #(8+8)
+            add     lr, lr, lr, lsr #5
             add     lr, r6, lr, lsr #5
             lsr     lr, #3
             orr     \FB, \FB, lr, lsl #\OFFSET
@@ -74,8 +74,8 @@
     mov     lr, \DREG, lsr #(6+5)
     and     lr, lr, #0x1F
     smlabb  lr, r7, lr, r8
-    add     lr, lr, lr, lsr #5
     and     r6, \SRC, r10
+    add     lr, lr, lr, lsr #5
     add     lr, r6, lr, lsr #5
     lsr     lr, #3
     mov     \FB, lr, lsl #11
@@ -84,8 +84,8 @@
         and     r6, \DREG, #(0x3F<<5)
         lsr     r6, #5
         smlabb  r6, r7, r6, r9
-        add     r6, r6, r6, lsr #6
         and     lr, r10, \SRC, lsr #(8)
+        add     r6, r6, r6, lsr #6
         add     r6, lr, r6, lsr #6
         lsr     r6, #2
         orr     \FB, \FB, r6, lsl #5
@@ -93,8 +93,8 @@
             // blue
             and     lr, \DREG, #0x1F
             smlabb  lr, r7, lr, r8
-            add     lr, lr, lr, lsr #5
             and     r6, r10, \SRC, lsr #(8+8)
+            add     lr, lr, lr, lsr #5
             add     lr, r6, lr, lsr #5
             orr     \FB, \FB, lr, lsr #3
 
@@ -120,7 +120,7 @@
 .endif
 
 2:
-    .endm
+.endm
 
 
 // r0:  dst ptr
@@ -136,32 +136,128 @@
 // r10: 0xFF
 // r11: free
 // r12: scratch
-// r14: pixel
+// r14: free
 
 scanline_t32cb16blend_arm:
     stmfd	sp!, {r4-r10, lr}
 
-    pld     [r0]
+#if __ARM_ARCH__ == 7 || defined(__ARM_NEON__)
+    subs    r2, r2, #16
+
+    blo     blit_less_than_16_left
+
+    vmov.u16 q12,  #0x80
+    vmov.u8  q13,  #0xf8
+
+blit_neon_loop:
+    /*
+     * Load 64 bytes from source and 32 bytes from destination
+     * note that source pixels are 4 bytes wide and
+     * destination pixels are 2 bytes wide.
+     */
+    vld4.8  {d2, d4, d6, d8}, [r1]!
+    vld4.8  {d3, d5, d7, d9}, [r1]!
+
+    vand.8  d10, d8, d9
+    vmov    r3, r4, d10
+
+    cmp     r3, #0xffffffff
+    cmpeq   r4, #0xffffffff
+    bne     blit_alpha_not_255
+
+    // alpha equals 255 case
+
+    vshl.u8   q0, q2, #3
+
+    subs    r2, r2, #16
+
+    vsri.u8   q1, q2, #5
+    vsri.u8   q0, q3, #3
+
+    // store the rgb destination values back to memory
+    vst2.8  {d0, d2}, [r0]!
+    vst2.8  {d1, d3}, [r0]!
+
+    blo     blit_less_than_16_left
+    b       blit_neon_loop
+
+blit_alpha_not_255:
+    // alpha = 255 - alpha
+    vmvn.u8 q0, q4
+
+    vld2.8 {q5, q6}, [r0]
+
+    vshl.u8 q7, q6, #3
+
+    subs    r2, r2, #16
+
+    vand.u8 q6, q6, q13
+
+    vmov.16   q8, q12
+    vmov.16   q9, q12
+
+    vsri.u8 q7, q5, #5
+    vshl.u8 q5, q5, #3
+
+    vmlal.u8 q8, d0, d12
+    vmlal.u8 q9, d1, d13
+
+    vshl.u8 q7, q7, #2
+
+    vshr.u16  q10, q8, #5
+    vshr.u16  q11, q9, #5
+    vaddhn.u16 d12, q8, q10
+    vaddhn.u16 d13, q9, q11
+
+    vmov.16   q8, q12
+    vmov.16   q9, q12
+    vmlal.u8 q8, d0, d14
+    vmlal.u8 q9, d1, d15
+
+    vqadd.u8  q6, q6, q1
+
+    vshr.u16  q10, q8, #6
+    vshr.u16  q11, q9, #6
+    vaddhn.u16 d14, q8, q10
+    vaddhn.u16 d15, q9, q11
+
+    vmov.16   q8, q12
+    vmov.16   q9, q12
+    vmlal.u8 q8, d0, d10
+    vmlal.u8 q9, d1, d11
+
+    vqadd.u8  q7, q7, q2
+
+    vshl.u8  q5, q7, #3
+
+    vshr.u16  q10, q8, #5
+    vshr.u16  q11, q9, #5
+
+    vsri.u8  q6, q7, #5
+
+    vaddhn.u16 d16, q8, q10
+    vaddhn.u16 d17, q9, q11
+    vqadd.u8  q8, q8, q3
+
+    vsri.u8  q5, q8, #3
+
+    // store the rgb destination values back to memory
+    vst2.8  {d10, d12}, [r0]!
+    vst2.8  {d11, d13}, [r0]!
+
+    blo     blit_less_than_16_left
+    b       blit_neon_loop
+#endif
+
+blit_less_than_16_left:
     pld     [r1]
-    mov     r8, #0x10
-    mov     r9, #0x20
+
+    mov     r8,  #0x10
+    mov     r9,  #0x20
     mov     r10, #0xFF
 
-    // align DST to 32 bits
-    tst     r0, #0x3
-    beq     aligned
-    subs    r2, r2, #1
-    ldmlofd	sp!, {r4-r10, lr}        // return
-    bxlo    lr
-
-last:
-    ldr     r4, [r1], #4
-    ldrh    r3, [r0]
-    pixel   r3, r4, r12, 0
-    strh    r12, [r0], #2
-
-aligned:
-    subs    r2, r2, #2
+    adds    r2, r2, #14
+    pld     [r0]
     blo     9f
 
     // The main loop is unrolled thrice and process 6 pixels
@@ -183,7 +279,7 @@ aligned:
     // cpu's write-back cache.
     str     r12, [r0, #-4]
 
-    // 2nd iterration of the loop, don't stream anything
+    // 2nd iteration of the loop, don't stream anything
     subs    r2, r2, #2
     blt     9f
     ldmia   r1!, {r4, r5}
@@ -212,6 +308,13 @@ aligned:
     b       8b
 
 9:  adds    r2, r2, #1
-    bhs     last
-    ldmfd sp!, {r4-r10, lr}        // return
+    ldmlofd sp!, {r4-r10, lr}        // return
+    bxlo    lr
+
+    // last pixel left
+    ldr     r4, [r1], #4
+    ldrh    r3, [r0]
+    pixel   r3, r4, r12, 0
+    strh    r12, [r0], #2
+    ldmfd   sp!, {r4-r10, lr}        // return
     bx      lr
