@@ -14,7 +14,7 @@ LOCAL_SRC_FILES := \
 LOCAL_SRC_FILES += \
 	../src/utils/SkUnitMappers.cpp
 
-LOCAL_SHARED_LIBRARIES := libcutils libskia
+LOCAL_SHARED_LIBRARIES := libcutils libsgl
 LOCAL_C_INCLUDES := \
     external/skia/include/config \
     external/skia/include/core \
