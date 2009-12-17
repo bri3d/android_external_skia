@@ -20,6 +20,7 @@
 #include "SkColor.h"
 #include "SkMath.h"
 #include "SkXfermode.h"
+#include "SkPorterDuff.h"
 
 class SkAutoGlyphCache;
 class SkColorFilter;
@@ -501,6 +502,15 @@ public:
         @return         xfermode
     */
     SkXfermode* setXfermode(SkXfermode* xfermode);
+
+    /** Helper for setXfermode, passing the corresponding xfermode object
+        returned from the PorterDuff factory.
+        @param mode The porter-duff mode used to create an xfermode for the
+                    paint.
+        @return     the resulting xfermode object (or NULL if the mode is
+                    SrcOver)
+    */
+    SkXfermode* setPorterDuffXfermode(SkPorterDuff::Mode mode);
 
     /** Create an xfermode based on the specified Mode, and assign it into the
         paint, returning the mode that was set. If the Mode is SrcOver, then
