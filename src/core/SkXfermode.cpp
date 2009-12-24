@@ -19,6 +19,9 @@
 
 #define SkAlphaMulAlpha(a, b)   SkMulDiv255Round(a, b)
 
+static SkPMColor src_modeproc(SkPMColor , SkPMColor );
+extern "C" void xfer16_arm(uint16_t*, uint32_t*, uint32_t);
+
 static SkPMColor SkFourByteInterp(SkPMColor src, SkPMColor dst, U8CPU alpha) {
     unsigned scale = SkAlpha255To256(alpha);
 
@@ -233,10 +236,14 @@ void SkProcXfermode::xfer16(SK_RESTRICT uint16_t dst[],
 
     if (NULL != proc) {
         if (NULL == aa) {
-            for (int i = count - 1; i >= 0; --i) {
-                SkPMColor dstC = SkPixel16ToPixel32(dst[i]);
-                dst[i] = SkPixel32ToPixel16_ToU16(proc(src[i], dstC));
-            }
+	    if (proc == src_modeproc) {
+	        xfer16_arm(dst, (uint32_t*)src, count);
+	    } else {
+                for (int i = count - 1; i >= 0; --i) {
+                    SkPMColor dstC = SkPixel16ToPixel32(dst[i]);
+                    dst[i] = SkPixel32ToPixel16_ToU16(proc(src[i], dstC));
+                }
+	    }
         } else {
             for (int i = count - 1; i >= 0; --i) {
                 unsigned a = aa[i];

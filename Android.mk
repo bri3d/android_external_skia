@@ -181,7 +181,14 @@ LOCAL_SRC_FILES += \
 ifeq ($(TARGET_ARCH),arm)
         LOCAL_CFLAGS += -DUSE_T32CB16BLEND_ASM
         LOCAL_SRC_FILES += \
-	        src/core/asm/t32cb16blend.S
+		src/core/asm/t32cb16blend.S \
+		src/core/asm/xfer.S
+endif
+
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
+	LOCAL_SRC_FILES += \
+		src/core/asm/memset16_neon.S \
+		src/core/asm/memset32_neon.S
 endif
 
 LOCAL_SHARED_LIBRARIES := \
