@@ -256,7 +256,12 @@ blit_less_than_16_left:
     mov     r9,  #0x20
     mov     r10, #0xFF
 
+#if __ARM_ARCH__ == 7 || defined(__ARM_NEON__)
     adds    r2, r2, #14
+#else
+    subs    r2, r2, #2
+#endif
+
     pld     [r0]
     blo     9f
 
