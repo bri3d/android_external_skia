@@ -359,13 +359,9 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
     if (config == SkBitmap::kARGB_8888_Config) {
         cinfo.out_color_space = JCS_RGBA_8888;
     } else if (config == SkBitmap::kRGB_565_Config) {
-        if (sampleSize == 1) {
-            // SkScaledBitmapSampler can't handle RGB_565 yet,
-            // so don't even try.
-            cinfo.out_color_space = JCS_RGB_565;
-            if (this->getDitherImage()) {
-                cinfo.dither_mode = JDITHER_ORDERED;
-            }
+        cinfo.out_color_space = JCS_RGB_565;
+        if (this->getDitherImage()) {
+            cinfo.dither_mode = JDITHER_ORDERED;
         }
     }
 #endif
@@ -378,11 +374,9 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
 
     /*  image_width and image_height are the original dimensions, available
         after jpeg_read_header(). To see the scaled dimensions, we have to call
-        jpeg_start_decompress(), and then read output_width and output_height.
+        jpeg_calc_output_dimensions(), and then read output_width and output_height.
     */
-    if (!jpeg_start_decompress(&cinfo)) {
-        return return_false(cinfo, *bm, "start_decompress");
-    }
+    jpeg_calc_output_dimensions(&cinfo);
 
     /*  If we need to better match the request, we might examine the image and
         output dimensions, and determine if the downsampling jpeg provided is
@@ -393,6 +387,18 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
     */
     sampleSize = sampleSize * cinfo.output_width / cinfo.image_width;
 
+    if ((sampleSize != 1) && (cinfo.out_color_space == JCS_RGB_565)) {
+        /*  Requires SkScaledBitmapSampler, but since
+            SkScaledBitmapSampler can't handle RGB_565 yet,
+            don't even try.
+            Revert back to the default format JCS_RGB.
+        */
+        cinfo.out_color_space = JCS_RGB;
+    }
+
+    if (!jpeg_start_decompress(&cinfo)) {
+        return return_false(cinfo, *bm, "start_decompress");
+    }
 
     // should we allow the Chooser (if present) to pick a config for us???
     if (!this->chooseFromOneChoice(config, cinfo.output_width,
