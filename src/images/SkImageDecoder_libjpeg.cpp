@@ -29,6 +29,13 @@ extern "C" {
     #include "jerror.h"
 }
 
+#ifdef ANDROID
+#include <cutils/properties.h>
+
+// Key to lookup the size of memory buffer set in system property
+static const char KEY_MEM_CAP[] = "ro.media.dec.jpeg.memcap";
+#endif
+
 // this enables timing code to report milliseconds for an encode
 //#define TIME_ENCODE
 //#define TIME_DECODE
@@ -191,6 +198,22 @@ static boolean skmem_resync_to_restart(j_decompress_ptr cinfo, int desired) {
 
 static void skmem_term_source(j_decompress_ptr /*cinfo*/) {}
 
+#ifdef ANDROID
+/* Check if the memory cap property is set.
+   If so, use the memory size for jpeg decode.
+*/
+static void overwrite_mem_buffer_size(j_decompress_ptr cinfo) {
+    int len = 0;
+    char value[PROPERTY_VALUE_MAX];
+    int memCap;
+
+    len = property_get(KEY_MEM_CAP, value, "");
+    if (len > 0 && sscanf(value, "%d", &memCap) == 1) {
+        cinfo->mem->max_memory_to_use = memCap;
+    }
+}
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////
 
 sk_source_mgr::sk_source_mgr(SkStream* stream, SkImageDecoder* decoder) : fStream(stream) {
@@ -236,6 +259,25 @@ static void sk_error_exit(j_common_ptr cinfo) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+/*  If we need to better match the request, we might examine the image and
+     output dimensions, and determine if the downsampling jpeg provided is
+     not sufficient. If so, we can recompute a modified sampleSize value to
+     make up the difference.
+
+     To skip this additional scaling, just set sampleSize = 1; below.
+ */
+static int recompute_sampleSize(int sampleSize,
+                                const jpeg_decompress_struct& cinfo) {
+    return sampleSize * cinfo.output_width / cinfo.image_width;
+}
+
+static bool valid_output_dimensions(const jpeg_decompress_struct& cinfo) {
+    /* These are initialized to 0, so if they have non-zero values, we assume
+       they are "valid" (i.e. have been computed by libjpeg)
+     */
+    return cinfo.output_width != 0 && cinfo.output_height != 0;
+}
 
 static bool skip_src_rows(jpeg_decompress_struct* cinfo, void* buffer,
                           int count) {
@@ -285,6 +327,10 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
 
     jpeg_create_decompress(&cinfo);
     autoClean.set(&cinfo);
+
+#ifdef ANDROID
+    overwrite_mem_buffer_size(&cinfo);
+#endif
 
     //jpeg_stdio_src(&cinfo, file);
     cinfo.src = &sk_stream;
@@ -354,18 +400,27 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
         jpeg_start_decompress(), and then read output_width and output_height.
     */
     if (!jpeg_start_decompress(&cinfo)) {
-        return return_false(cinfo, *bm, "start_decompress");
+        /*  If we failed here, we may still have enough information to return
+            to the caller if they just wanted (subsampled bounds). If sampleSize
+            was 1, then we would have already returned. Thus we just check if
+            we're in kDecodeBounds_Mode, and that we have valid output sizes.
+
+            One reason to fail here is that we have insufficient stream data
+            to complete the setup. However, output dimensions seem to get
+            computed very early, which is why this special check can pay off.
+         */
+        if (SkImageDecoder::kDecodeBounds_Mode == mode &&
+                valid_output_dimensions(cinfo)) {
+            SkScaledBitmapSampler smpl(cinfo.output_width, cinfo.output_height,
+                                       recompute_sampleSize(sampleSize, cinfo));
+            bm->setConfig(config, smpl.scaledWidth(), smpl.scaledHeight());
+            bm->setIsOpaque(true);
+            return true;
+        } else {
+            return return_false(cinfo, *bm, "start_decompress");
+        }
     }
-
-    /*  If we need to better match the request, we might examine the image and
-        output dimensions, and determine if the downsampling jpeg provided is
-        not sufficient. If so, we can recompute a modified sampleSize value to
-        make up the difference.
-
-        To skip this additional scaling, just set sampleSize = 1; below.
-    */
-    sampleSize = sampleSize * cinfo.output_width / cinfo.image_width;
-
+    sampleSize = recompute_sampleSize(sampleSize, cinfo);
 
     // should we allow the Chooser (if present) to pick a config for us???
     if (!this->chooseFromOneChoice(config, cinfo.output_width,
