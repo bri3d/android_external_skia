@@ -398,14 +398,18 @@ static void S32_D565_Blend_Dither_neon(uint16_t *dst, const SkPMColor *src,
     }
 }
 
-#define S32A_D565_Opaque_PROC       S32A_D565_Opaque_neon
 #define S32A_D565_Blend_PROC        S32A_D565_Blend_neon
 #define S32_D565_Blend_Dither_PROC  S32_D565_Blend_Dither_neon
 #else
-#define S32A_D565_Opaque_PROC       NULL
 #define S32A_D565_Blend_PROC        NULL
 #define S32_D565_Blend_Dither_PROC  NULL
 #endif
+
+/*
+ * Use neon version of BLIT assembly code from t32cb16blend.S, where we process
+ * 16 pixels at-a-time and also optimize for alpha=255 case.
+ */
+#define S32A_D565_Opaque_PROC       NULL
 
 /* Don't have a special version that assumes each src is opaque, but our S32A
     is still faster than the default, so use it here
