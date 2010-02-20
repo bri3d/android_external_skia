@@ -378,9 +378,13 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
     if (config == SkBitmap::kARGB_8888_Config) {
         cinfo.out_color_space = JCS_RGBA_8888;
     } else if (config == SkBitmap::kRGB_565_Config) {
-        cinfo.out_color_space = JCS_RGB_565;
-        if (this->getDitherImage()) {
-            cinfo.dither_mode = JDITHER_ORDERED;
+        if (sampleSize == 1) {
+            // SkScaledBitmapSampler can't handle RGB_565 yet,
+            // so don't even try.
+            cinfo.out_color_space = JCS_RGB_565;
+            if (this->getDitherImage()) {
+                cinfo.dither_mode = JDITHER_ORDERED;
+            }
         }
     }
 #endif
@@ -417,6 +421,7 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
         }
     }
     sampleSize = recompute_sampleSize(sampleSize, cinfo);
+
 
     // should we allow the Chooser (if present) to pick a config for us???
     if (!this->chooseFromOneChoice(config, cinfo.output_width,
@@ -462,7 +467,7 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
         return true;
     }
 #endif
-
+    
     // check for supported formats
     SkScaledBitmapSampler::SrcConfig sc;
     if (3 == cinfo.out_color_components && JCS_RGB == cinfo.out_color_space) {
@@ -470,11 +475,8 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
 #ifdef ANDROID_RGB
     } else if (JCS_RGBA_8888 == cinfo.out_color_space) {
         sc = SkScaledBitmapSampler::kRGBX;
-    } else if (JCS_RGB_565 == cinfo.out_color_space) {
-        // SkScaledBitmapSampler can't handle RGB_565 yet,
-        // so don't even try.
-        //sc = SkScaledBitmapSampler::kRGB_565;
-        sc = SkScaledBitmapSampler::kRGB;
+    //} else if (JCS_RGB_565 == cinfo.out_color_space) {
+    //    sc = SkScaledBitmapSampler::kRGB_565;
 #endif
     } else if (1 == cinfo.out_color_components &&
                JCS_GRAYSCALE == cinfo.out_color_space) {
