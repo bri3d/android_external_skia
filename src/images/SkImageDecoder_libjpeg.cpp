@@ -260,6 +260,25 @@ static void sk_error_exit(j_common_ptr cinfo) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+/*  If we need to better match the request, we might examine the image and
+     output dimensions, and determine if the downsampling jpeg provided is
+     not sufficient. If so, we can recompute a modified sampleSize value to
+     make up the difference.
+
+     To skip this additional scaling, just set sampleSize = 1; below.
+ */
+static int recompute_sampleSize(int sampleSize,
+                                const jpeg_decompress_struct& cinfo) {
+    return sampleSize * cinfo.output_width / cinfo.image_width;
+}
+
+static bool valid_output_dimensions(const jpeg_decompress_struct& cinfo) {
+    /* These are initialized to 0, so if they have non-zero values, we assume
+       they are "valid" (i.e. have been computed by libjpeg)
+     */
+    return cinfo.output_width != 0 && cinfo.output_height != 0;
+}
+
 static bool skip_src_rows(jpeg_decompress_struct* cinfo, void* buffer,
                           int count) {
     for (int i = 0; i < count; i++) {
@@ -378,15 +397,23 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
     */
     jpeg_calc_output_dimensions(&cinfo);
 
-    /*  If we need to better match the request, we might examine the image and
-        output dimensions, and determine if the downsampling jpeg provided is
-        not sufficient. If so, we can recompute a modified sampleSize value to
-        make up the difference.
+	/*  We have enough information to return
+		to the caller if they just wanted (subsampled bounds). If sampleSize
+		was 1, then we would have already returned. Thus we just check if
+		we're in kDecodeBounds_Mode, and that we have valid output sizes.
+	 */
+	if (SkImageDecoder::kDecodeBounds_Mode == mode &&
+			valid_output_dimensions(cinfo)) {
+		SkScaledBitmapSampler smpl(cinfo.output_width, cinfo.output_height,
+								   recompute_sampleSize(sampleSize, cinfo));
+		bm->setConfig(config, smpl.scaledWidth(), smpl.scaledHeight());
+		bm->setIsOpaque(true);
+		return true;
+    } 
+    
+    sampleSize = recompute_sampleSize(sampleSize, cinfo);
 
-        To skip this additional scaling, just set sampleSize = 1; below.
-    */
-    sampleSize = sampleSize * cinfo.output_width / cinfo.image_width;
-
+#ifdef ANDROID_RGB
     if ((sampleSize != 1) && (cinfo.out_color_space == JCS_RGB_565)) {
         /*  Requires SkScaledBitmapSampler, but since
             SkScaledBitmapSampler can't handle RGB_565 yet,
@@ -395,6 +422,7 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
         */
         cinfo.out_color_space = JCS_RGB;
     }
+#endif
 
     if (!jpeg_start_decompress(&cinfo)) {
         return return_false(cinfo, *bm, "start_decompress");
