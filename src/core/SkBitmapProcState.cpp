@@ -86,7 +86,11 @@ static inline U8CPU Filter_8(unsigned x, unsigned y,
                                 SkASSERT(state.fAlphaScale == 256)
 #define RETURNDST(src)          src
 #define SRC_TO_FILTER(src)      src
+#if defined(__ARM_HAVE_NEON) && !defined(SK_CPU_BENDIAN)
+    #define USE_NEON_GETHER32
+#endif
 #include "SkBitmapProcState_sample.h"
+#undef  USE_NEON_GETHER32
 
 #undef FILTER_PROC
 #define FILTER_PROC(x, y, a, b, c, d, dst)   Filter_32_alpha(x, y, a, b, c, d, dst, alphaScale)

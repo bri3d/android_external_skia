@@ -190,7 +190,9 @@ endif
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
 	LOCAL_SRC_FILES += \
 		src/core/asm/memset16_neon.S \
-		src/core/asm/memset32_neon.S
+		src/core/asm/memset32_neon.S \
+		src/core/asm/S32A_Opaque_BlitRow32.S \
+		src/core/asm/S32_Opaque_D32_nofilter_DX_gether.S
 endif
 
 LOCAL_SHARED_LIBRARIES := \

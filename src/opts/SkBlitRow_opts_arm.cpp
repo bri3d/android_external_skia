@@ -21,6 +21,11 @@
 #include "SkDither.h"
 
 #if defined(__ARM_HAVE_NEON) && !defined(SK_CPU_BENDIAN)
+extern "C"  void S32A_Opaque_BlitRow32_neon(SkPMColor* SK_RESTRICT dst,
+                                            const SkPMColor* SK_RESTRICT src,
+                                            int count,
+                                            U8CPU alpha);
+
 static void S32A_D565_Opaque_neon(uint16_t* SK_RESTRICT dst,
                                   const SkPMColor* SK_RESTRICT src, int count,
                                   U8CPU alpha, int /*x*/, int /*y*/) {
@@ -400,9 +405,11 @@ static void S32_D565_Blend_Dither_neon(uint16_t *dst, const SkPMColor *src,
 
 #define S32A_D565_Blend_PROC        S32A_D565_Blend_neon
 #define S32_D565_Blend_Dither_PROC  S32_D565_Blend_Dither_neon
+#define S32A_Opaque_BlitRow32_PROC  S32A_Opaque_BlitRow32_neon
 #else
 #define S32A_D565_Blend_PROC        NULL
 #define S32_D565_Blend_Dither_PROC  NULL
+#define S32A_Opaque_BlitRow32_PROC  NULL
 #endif
 
 /*
@@ -450,7 +457,7 @@ const SkBlitRow::Proc SkBlitRow::gPlatform_4444_Procs[] = {
 const SkBlitRow::Proc32 SkBlitRow::gPlatform_Procs32[] = {
     NULL,   // S32_Opaque,
     NULL,   // S32_Blend,
-    NULL,   // S32A_Opaque,
+    S32A_Opaque_BlitRow32_PROC,
     NULL,   // S32A_Blend,
 };
 
