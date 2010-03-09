@@ -16,9 +16,9 @@
  */
 
     .text
-    .global S32_Opaque_D32_nofilter_DX_gether_neon
-    .func S32_Opaque_D32_nofilter_DX_gether_neon
-S32_Opaque_D32_nofilter_DX_gether_neon:
+    .global S32_Opaque_D32_nofilter_DX_gether
+    .func S32_Opaque_D32_nofilter_DX_gether
+S32_Opaque_D32_nofilter_DX_gether:
           push     {r0-r11,lr}
           asr      r0,r2,#3
           sub      sp,sp,#4              //23
@@ -82,4 +82,4 @@ S32_Opaque_D32_nofilter_DX_gether_neon:
           pop      {r4-r11,pc}
 
 .endfunc
-.size S32_Opaque_D32_nofilter_DX_gether_neon, .-S32_Opaque_D32_nofilter_DX_gether_neon
+.size S32_Opaque_D32_nofilter_DX_gether, .-S32_Opaque_D32_nofilter_DX_gether
