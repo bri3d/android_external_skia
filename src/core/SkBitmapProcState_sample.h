@@ -16,6 +16,13 @@
     #error "unsupported DSTSIZE"
 #endif
 
+#if defined(USE_NEON_GETHER32)
+    extern "C" void S32_Opaque_D32_nofilter_DX_gether_neon(SkPMColor* SK_RESTRICT colors,
+                                                           const SkPMColor* SK_RESTRICT srcAddr,
+                                                           int count,
+                                                           const uint32_t* SK_RESTRICT xy);
+#endif
+
 static void MAKENAME(_nofilter_DXDY)(const SkBitmapProcState& s,
                                      const uint32_t* SK_RESTRICT xy,
                                      int count, DSTTYPE* SK_RESTRICT colors) {
@@ -85,6 +92,10 @@ static void MAKENAME(_nofilter_DX)(const SkBitmapProcState& s,
         DSTTYPE dstValue = RETURNDST(src);
         BITMAPPROC_MEMSET(colors, dstValue, count);
     } else {
+#if defined(USE_NEON_GETHER32)
+        S32_Opaque_D32_nofilter_DX_gether_neon(colors, srcAddr, count, xy);
+#endif
+
         int i;
         for (i = (count >> 2); i > 0; --i) {
             uint32_t xx0 = *xy++;
