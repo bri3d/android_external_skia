@@ -16,14 +16,15 @@
  */
 
     .text
-    .global S32A_Opaque_BlitRow32_neon
-    .func S32A_Opaque_BlitRow32_neon
-S32A_Opaque_BlitRow32_neon:
+
+    .global S32A_Opaque_BlitRow32_asm
+    .func S32A_Opaque_BlitRow32_asm
+
+S32A_Opaque_BlitRow32_asm:
+
+#if __ARM_ARCH__ == 7 || defined(__ARM_NEON__)
+
     push     {r4-r11}
-    cmp      r3,#0xff
-    bne      .Lto_exit
-    cmp      r2,#0
-    ble      .Lto_exit
     cmp      r2,#24
     blt      .Lless_than_24
 
@@ -267,11 +268,53 @@ S32A_Opaque_BlitRow32_neon:
 
     bge      .Lloop_8
     b        .Lless_than_4
+
+#else
+
+/*
+ * r0 - dst
+ * r1 - src
+ * r2 - count
+ */
+    push     {r4-r11}
+    mov      r9, #0xFF
+    orr      r10, r9, r9, lsl #16
+    mvn      r11, r10
+
+.Lblitrow32_loop:
+    ldr      r3, [r0]
+    ldr      r4, [r1], #4
+
+    cmp      r3, #0
+    streq    r4, [r0], #4
+    beq      .Lblitrow32_loop_cond
+
+    // r5 <- (255-alpha)+1
+    sub      r5, r9, r4, lsr #24
+    and      r6, r3, r10
+    add      r5, r5, #1
+    and      r7, r10, r3, lsr #8
+
+    mul      r8, r6, r5
+    lsr      r6, r8, #8
+    mul      r8, r7, r5
+
+    // combine rb and ag
+    and      r6, r6, r10
+    and      r7, r8, r11
+    orr      r6, r6, r7
+
+    // add src to combined value
+    add      r6, r6, r4
+    str      r6, [r0], #4
+
+.Lblitrow32_loop_cond:
+    subs     r2, r2, #1
+    bhi      .Lblitrow32_loop
+    pop      {r4-r11}
+    bx       lr
+
+#endif
+
 .endfunc
-.size S32A_Opaque_BlitRow32_neon, .-S32A_Opaque_BlitRow32_neon
-
-
-
-
-
-
+.size S32A_Opaque_BlitRow32_asm, .-S32A_Opaque_BlitRow32_asm
