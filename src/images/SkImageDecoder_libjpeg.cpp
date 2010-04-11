@@ -397,30 +397,40 @@ bool SkJPEGImageDecoder::onDecode(SkStream* stream, SkBitmap* bm,
 
     /*  image_width and image_height are the original dimensions, available
         after jpeg_read_header(). To see the scaled dimensions, we have to call
-        jpeg_start_decompress(), and then read output_width and output_height.
+        jpeg_calc_output_dimensions(), and then read output_width and output_height.
     */
-    if (!jpeg_start_decompress(&cinfo)) {
-        /*  If we failed here, we may still have enough information to return
-            to the caller if they just wanted (subsampled bounds). If sampleSize
-            was 1, then we would have already returned. Thus we just check if
-            we're in kDecodeBounds_Mode, and that we have valid output sizes.
+    jpeg_calc_output_dimensions(&cinfo);
 
-            One reason to fail here is that we have insufficient stream data
-            to complete the setup. However, output dimensions seem to get
-            computed very early, which is why this special check can pay off.
-         */
-        if (SkImageDecoder::kDecodeBounds_Mode == mode &&
-                valid_output_dimensions(cinfo)) {
-            SkScaledBitmapSampler smpl(cinfo.output_width, cinfo.output_height,
-                                       recompute_sampleSize(sampleSize, cinfo));
-            bm->setConfig(config, smpl.scaledWidth(), smpl.scaledHeight());
-            bm->setIsOpaque(true);
-            return true;
-        } else {
-            return return_false(cinfo, *bm, "start_decompress");
-        }
-    }
+	/*  We have enough information to return
+		to the caller if they just wanted (subsampled bounds). If sampleSize
+		was 1, then we would have already returned. Thus we just check if
+		we're in kDecodeBounds_Mode, and that we have valid output sizes.
+	 */
+	if (SkImageDecoder::kDecodeBounds_Mode == mode &&
+			valid_output_dimensions(cinfo)) {
+		SkScaledBitmapSampler smpl(cinfo.output_width, cinfo.output_height,
+								   recompute_sampleSize(sampleSize, cinfo));
+		bm->setConfig(config, smpl.scaledWidth(), smpl.scaledHeight());
+		bm->setIsOpaque(true);
+		return true;
+    } 
+    
     sampleSize = recompute_sampleSize(sampleSize, cinfo);
+
+#ifdef ANDROID_RGB
+    if ((sampleSize != 1) && (cinfo.out_color_space == JCS_RGB_565)) {
+        /*  Requires SkScaledBitmapSampler, but since
+            SkScaledBitmapSampler can't handle RGB_565 yet,
+            don't even try.
+            Revert back to the default format JCS_RGB.
+        */
+        cinfo.out_color_space = JCS_RGB;
+    }
+#endif
+
+    if (!jpeg_start_decompress(&cinfo)) {
+        return return_false(cinfo, *bm, "start_decompress");
+    }
 
     // should we allow the Chooser (if present) to pick a config for us???
     if (!this->chooseFromOneChoice(config, cinfo.output_width,

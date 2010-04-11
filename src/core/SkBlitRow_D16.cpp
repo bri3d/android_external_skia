@@ -215,12 +215,20 @@ static void S32A_D565_Blend_Dither(uint16_t* SK_RESTRICT dst,
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef USE_T32CB16BLEND_ASM
+    extern "C" void scanline_t32cb16blend_arm(uint16_t*, uint32_t*, size_t);
+#endif
+
 static const SkBlitRow::Proc gDefault_565_Procs[] = {
     // no dither
     S32_D565_Opaque,
     S32_D565_Blend,
 
+#ifdef USE_T32CB16BLEND_ASM
+    (SkBlitRow::Proc)scanline_t32cb16blend_arm,
+#else
     S32A_D565_Opaque,
+#endif
     S32A_D565_Blend,
 
     // dither

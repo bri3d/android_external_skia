@@ -86,7 +86,11 @@ static inline U8CPU Filter_8(unsigned x, unsigned y,
                                 SkASSERT(state.fAlphaScale == 256)
 #define RETURNDST(src)          src
 #define SRC_TO_FILTER(src)      src
+#if __ARM_ARCH__ >= 6 && !defined(SK_CPU_BENDIAN)
+    #define USE_GETHER32
+#endif
 #include "SkBitmapProcState_sample.h"
+#undef  USE_GETHER32
 
 #undef FILTER_PROC
 #define FILTER_PROC(x, y, a, b, c, d, dst)   Filter_32_alpha(x, y, a, b, c, d, dst, alphaScale)

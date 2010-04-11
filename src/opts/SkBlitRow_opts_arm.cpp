@@ -20,6 +20,11 @@
 #include "SkColorPriv.h"
 #include "SkDither.h"
 
+extern "C"  void S32A_Opaque_BlitRow32_asm(SkPMColor* SK_RESTRICT dst,
+                                           const SkPMColor* SK_RESTRICT src,
+                                           int count,
+                                           U8CPU alpha);
+
 #if defined(__ARM_HAVE_NEON) && !defined(SK_CPU_BENDIAN)
 static void S32A_D565_Opaque_neon(uint16_t* SK_RESTRICT dst,
                                   const SkPMColor* SK_RESTRICT src, int count,
@@ -398,14 +403,24 @@ static void S32_D565_Blend_Dither_neon(uint16_t *dst, const SkPMColor *src,
     }
 }
 
-#define S32A_D565_Opaque_PROC       S32A_D565_Opaque_neon
 #define S32A_D565_Blend_PROC        S32A_D565_Blend_neon
 #define S32_D565_Blend_Dither_PROC  S32_D565_Blend_Dither_neon
 #else
-#define S32A_D565_Opaque_PROC       NULL
 #define S32A_D565_Blend_PROC        NULL
 #define S32_D565_Blend_Dither_PROC  NULL
 #endif
+
+/*
+ * Use asm version of BlitRow function. Neon instructions are
+ * used for armv7 targets.
+ */
+#define S32A_Opaque_BlitRow32_PROC  S32A_Opaque_BlitRow32_asm
+
+/*
+ * Use neon version of BLIT assembly code from t32cb16blend.S, where we process
+ * 16 pixels at-a-time and also optimize for alpha=255 case.
+ */
+#define S32A_D565_Opaque_PROC       NULL
 
 /* Don't have a special version that assumes each src is opaque, but our S32A
     is still faster than the default, so use it here
@@ -446,7 +461,7 @@ const SkBlitRow::Proc SkBlitRow::gPlatform_4444_Procs[] = {
 const SkBlitRow::Proc32 SkBlitRow::gPlatform_Procs32[] = {
     NULL,   // S32_Opaque,
     NULL,   // S32_Blend,
-    NULL,   // S32A_Opaque,
+    S32A_Opaque_BlitRow32_PROC,
     NULL,   // S32A_Blend,
 };
 
