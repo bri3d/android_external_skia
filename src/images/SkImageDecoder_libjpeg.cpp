@@ -846,9 +846,6 @@ protected:
 #include <dlfcn.h>
 #include "SkTRegistry.h"
 
-#define HW_JPEG_CODEC_LIBRARY "libskiahw.so"
-void *mLibHandle = NULL;
-
 static SkImageDecoder* DFactory(SkStream* stream) {
     static const char gHeader[] = { 0xFF, 0xD8, 0xFF };
     static const size_t HEADER_SIZE = sizeof(gHeader);
@@ -863,24 +860,6 @@ static SkImageDecoder* DFactory(SkStream* stream) {
         return NULL;
     }
 
-    // attempt to load device-specific jpeg codec
-    if (mLibHandle == NULL) {
-        mLibHandle = ::dlopen(HW_JPEG_CODEC_LIBRARY, RTLD_NOW);
-        if( mLibHandle == NULL ) {
-            SkDebugf ("Failed to load libskiahw.so because %s", dlerror());
-        }
-        else SkDebugf ("Loaded libskiahw.so");
-    }
-
-    if (mLibHandle != NULL){
-        typedef SkImageDecoder* (*HWJpegDecFactory)();
-        HWJpegDecFactory f = (HWJpegDecFactory) ::dlsym(mLibHandle, "SkImageDecoder_HWJPEG_Factory");
-        if (f != NULL) {
-            SkDebugf("\n\n####### Loaded Hardware Specific Jpeg Decoder Codec #######\n\n");
-            return f();
-        }
-        SkDebugf("Unable to Load Hardware Specific Jpeg Decoder Codec because: %s", dlerror());
-    }
     return SkNEW(SkJPEGImageDecoder);
 }
 
@@ -888,26 +867,6 @@ static SkImageEncoder* EFactory(SkImageEncoder::Type t) {
 
     if (SkImageEncoder::kJPEG_Type != t) return NULL;
 
-    // attempt to load device-specific jpeg codec
-    if (mLibHandle == NULL) {
-        mLibHandle = ::dlopen(HW_JPEG_CODEC_LIBRARY, RTLD_NOW);
-        if( mLibHandle == NULL ) {
-            SkDebugf ("Failed to load libskiahw.so because %s", dlerror());
-        }
-        else SkDebugf ("Loaded libskiahw.so");
-    }
-
-    if (mLibHandle != NULL){
-        typedef SkImageEncoder* (*HWJpegEncFactory)();
-        HWJpegEncFactory f = (HWJpegEncFactory) ::dlsym(mLibHandle, "SkImageEncoder_HWJPEG_Factory");
-        if (f != NULL) {
-            SkDebugf("\n\n####### Loaded Hardware Specific Jpeg Encoder Codec #######\n\n");
-            return f();
-        }
-        SkDebugf("Unable to Load Hardware Specific Jpeg Encoder Codec because: %s", dlerror());
-    }
-
-    // if no device-specific codec was loaded, use the generic one
     return SkNEW(SkJPEGImageEncoder);
 
 }
